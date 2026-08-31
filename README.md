@@ -1,1 +1,3 @@
-Proyecto-8-DataScience-Veru/ 
+# PROYECTO DATA SCIENTIST/AI DEVELOPER: Aprendizaje Supervisado
+
+##
