@@ -813,6 +813,21 @@ wheels = [
 ]
 
 [[package]]
+name = "missingno"
+version = "0.5.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "scipy" },
+    { name = "seaborn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2b/f9/e20220b851bc6d7abf70b403a3080d6af946ed4b13b2bf91ef4e74d2aec9/missingno-0.5.2.tar.gz", hash = "sha256:4a4baa9ca9f9e4e0d9402455df26b656632e94b99e87fa64c0cdbbbc722837ac", size = 17489, upload-time = "2023-02-26T20:10:29.329Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/22/cd5cf999af21c2f97486622c551ac3d07361ced8125121e907f588ff5f24/missingno-0.5.2-py3-none-any.whl", hash = "sha256:55782621ce09ba0f0a1d08e5bd6d6fe1946469fb03951fadf7d209911ca5b072", size = 8704, upload-time = "2023-02-26T20:10:26.042Z" },
+]
+
+[[package]]
 name = "multidict"
 version = "6.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1221,6 +1236,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "jupytext" },
     { name = "matplotlib" },
+    { name = "missingno" },
     { name = "pandas" },
     { name = "postgres" },
     { name = "pyarrow" },
@@ -1237,6 +1253,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "jupytext", specifier = ">=1.19.5" },
     { name = "matplotlib", specifier = ">=3.11.1" },
+    { name = "missingno", specifier = ">=0.5.2" },
     { name = "pandas", specifier = ">=3.0.5" },
     { name = "postgres", specifier = ">=4.0" },
     { name = "pyarrow", specifier = ">=25.0.1" },
