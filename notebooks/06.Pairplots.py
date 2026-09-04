@@ -11,11 +11,17 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 sns.set_theme(style="darkgrid")
 
-# Visualizar relaciones entre todas las variables numéricas
-# hue='Survived' colorea los puntos según si sobrevivieron (verde) o no (rojo)
-# palette={0: 'red', 1: 'green'} define los colores específicos
-# Este gráfico puede tardar un poco porque crea muchas visualizaciones
-sns.pairplot(numeric_df, hue='Survived', palette={0: 'red', 1: 'green'}, 
-             diag_kind='hist', plot_kws={'alpha': 0.6})
-plt.suptitle('Pairplot of Numeric Variables by Survival', y=1.02)  # Título general
+# %%
+df = pd.read_csv(ROOT / "data" / "stroke_dataset.csv")
+
+# %%
+# Pairplot solo sobre variables numéricas y coloreando por ictus (stroke)
+g = sns.pairplot(
+    df,
+    vars=['age', 'avg_glucose_level', 'bmi', 'hypertension', 'heart_disease'],
+    hue='stroke',
+    palette='Set1'
+)
+g.fig.suptitle("Variables numéricas según ictus", y=1.02)
 plt.show()
+# %%

@@ -56,16 +56,6 @@ plt.title('Bmi distribution')
 plt.show()
 
 
-# %%
-sns.histplot(df['stroke'], bins=20, kde=True)
-plt.title('Histograma de stroke')
-plt.show()
-
-
-
-# %%
-# Calcular la media y desviación estándar
-
 
 
 
