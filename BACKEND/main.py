@@ -2,19 +2,30 @@
 
 Expone el modelo final (`models/catboost_final.pkl`) mediante un endpoint
 `POST /predict` que recibe los datos del paciente y devuelve la probabilidad,
-la clase y el veredicto de riesgo.
+la clase y el veredicto de riesgo. Cada predicción se guarda en la base de
+datos (D11) y se consulta su historial en `GET /predictions`.
 
 Ejecución local:
     uvicorn BACKEND.main:app --reload
     # o bien: make api
 """
 
+import logging
 from pathlib import Path
+import sys
 
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from BACKEND import db
+except ImportError:
+    import db
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT / "models" / "catboost_final.pkl"
@@ -71,6 +82,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+try:
+    db.init_db()
+    logger.info("Base de datos inicializada (%s)", db.DATABASE_URL)
+except Exception as exc:  # noqa: BLE001
+    logger.warning("No se pudo inicializar la BD; la API funciona sin persistencia: %s", exc)
+
 
 @app.get("/health")
 def health():
@@ -114,11 +131,41 @@ def predict(paciente: PatientData):
     clase = int(proba >= THRESHOLD)
     riesgo = "ALTO" if clase == 1 else "BAJO"
 
+    try:
+        db.save_prediction(
+            features=dict(
+                age=paciente.age,
+                avg_glucose_level=paciente.avg_glucose_level,
+                bmi=paciente.bmi,
+                gender=paciente.gender,
+                ever_married=paciente.ever_married,
+                work_type=paciente.work_type,
+                Residence_type=paciente.residence_type,
+                smoking_status=paciente.smoking_status,
+                hypertension=paciente.hypertension,
+                heart_disease=paciente.heart_disease,
+            ),
+            probabilidad=proba,
+            clase=clase,
+            riesgo=riesgo,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo guardar la predicción en la BD: %s", exc)
+
     return PredictionResponse(
         probabilidad_ictus=round(proba, 4),
         clase=clase,
         riesgo=riesgo,
     )
+
+
+@app.get("/predictions")
+def predictions(limit: int = 50):
+    try:
+        return db.list_predictions(limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo leer el historial de la BD: %s", exc)
+        return []
 
 
 if __name__ == "__main__":

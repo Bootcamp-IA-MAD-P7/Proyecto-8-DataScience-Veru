@@ -80,7 +80,7 @@ El ictus (accidente cerebrovascular) es una de las principales causas de mortali
 │   ├── compare_train_test.py        #   Comprueba requisito de overfitting
 │   └── predict_cli.py               #   Aplicación de línea de comandos (CLI)
 ├── tests/                   # Suite de tests (pytest) + INFORME_TESTS.md
-├── SDD/                     # Documento de diseño (Decisiones D1–D10)
+├── SDD/                     # Documento de diseño (Decisiones D1–D11)
 ├── makefile                 # Orquestación de tareas
 ├── pyproject.toml           # Dependencias del proyecto (uv)
 ├── uv.lock                  # Lock de dependencias
@@ -159,14 +159,37 @@ Salida: `{"probabilidad_ictus":0.8855,"clase":1,"riesgo":"ALTO"}`
 
 ## Diseño de la base de datos
 
-**No se utiliza base de datos.** Los datos vienen de un único CSV estático (`data/stroke_dataset.csv`, 4981 filas × 11 columnas) que se carga con pandas en cada script y API. No hay tablas, relaciones ni normalización que documentar.
+Hay **dos orígenes de datos**:
 
-Columnas del dataset:
+1. **`data/stroke_dataset.csv`** (datos de entrenamiento, solo lectura): 4981 filas × 11 columnas, cargado con pandas en scripts y modelo.
+2. **Base de datos de predicciones** (historial de la API): tabla `predictions` donde se guarda cada resultado de `POST /predict`. Usa **PostgreSQL** (`DATABASE_URL`) en Docker/producción y **SQLite** (`data/predictions.db`) por defecto en local/tests (decisión D11). Se consulta con `GET /predictions`.
+
+### Modelo entidad-relación (E-R)
+
+Base de datos de **una sola entidad** (`predictions`): una predicción de ictus. No hay relaciones entre entidades ni claves foráneas (el modelo predice sobre un paciente puntual).
+
+```
+PREDICTION (tabla predictions)
+ ┌───────────────────────────────────────────────────────────┐
+ │ id (PK, autoincremental)                                  │
+ │ ── Entrada (features del paciente) ──                     │
+ │ age, gender, hypertension, heart_disease, ever_married,   │
+ │ work_type, Residence_type, avg_glucose_level, bmi,        │
+ │ smoking_status                                            │
+ │ ── Salida (resultado del modelo) ──                       │
+ │ probabilidad (0–1), clase (0/1), riesgo ("ALTO"/"BAJO"),  │
+ │ created_at (fecha/hora)                                   │
+ └───────────────────────────────────────────────────────────┘
+ Relaciones: ninguna · PK: id · FK: no hay
+```
+
+Columnas de la tabla `predictions`:
 
 | Columna | Tipo | Descripción |
 |---|---|---|
-| `gender` | str | Male / Female / Other |
+| `id` | serial/int **PK** | Identificador autogenerado |
 | `age` | float | Edad en años |
+| `gender` | str | Male / Female / Other |
 | `hypertension` | int | 0/1 |
 | `heart_disease` | int | 0/1 |
 | `ever_married` | str | Yes / No |
@@ -175,7 +198,10 @@ Columnas del dataset:
 | `avg_glucose_level` | float | Glucosa media (mg/dL) |
 | `bmi` | float | Índice de masa corporal |
 | `smoking_status` | str | never smoked / formerly smoked / smokes / Unknown |
-| `stroke` | int | **Target** (0/1), 248 positivos (4.98 %) |
+| `probabilidad` | float | Probabilidad de ictus devuelta por el modelo |
+| `clase` | int | 0/1 (riesgo) |
+| `riesgo` | str | `ALTO` / `BAJO` |
+| `created_at` | timestamp | Fecha y hora de la predicción |
 
 ## Paradigma de desarrollo, estructura de carpetas y patrones de diseño
 
@@ -235,7 +261,7 @@ entrenamiento de modelos y tests pasados
 | Documento | Ubicación |
 |---|---|
 | Este README | `README.md` |
-| Decisiones de diseño (D1–D10) | `SDD/02.Scope_anchored.md` |
+| Decisiones de diseño (D1–D11) | `SDD/02.Scope_anchored.md` |
 | Informe de rendimiento del modelo | `models/INFORME_MODELOS.md` |
 | Informe de tests | `tests/INFORME_TESTS.md` |
 | Informe EDA / conclusiones | `notebooks/07.Informe.md` |
