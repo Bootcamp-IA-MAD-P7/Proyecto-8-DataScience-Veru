@@ -87,9 +87,9 @@ api:
 	@$(PY) -m uvicorn BACKEND.main:app --reload
 
 
-#TARGETS PENDIENTES O INFRAESTRUCTURA
+#INFRAESTRUCTURA DOCKER
 
-.PHONY: shap docker-build
+.PHONY: shap docker-build docker-up docker-down db-up db-down
 
 SHAP_CMD ?= echo "Definid SHAP_CMD cuando tengáis script de interpretabilidad."
 shap:
@@ -98,8 +98,25 @@ shap:
 
 DOCKER_BUILD_CMD ?= docker compose build
 docker-build:
-	@echo "Ejecutando target docker-build..."
+	@echo "Construyendo imágenes Docker (API + Postgres)..."
 	@$(DOCKER_BUILD_CMD)
+
+docker-up:
+	@echo "Levantando servicios (Postgres + API) en segundo plano..."
+	@docker compose up -d --build
+	@echo "API disponible en http://localhost:8000 (docs: /docs)"
+
+docker-down:
+	@echo "Deteniendo servicios..."
+	@docker compose down
+
+db-up:
+	@echo "Levantando solo PostgreSQL..."
+	@docker compose up -d db
+
+db-down:
+	@echo "Deteniendo PostgreSQL..."
+	@docker compose stop db
 
 
 #RESUMEN DE USO
@@ -120,5 +137,9 @@ help:
 	@echo "  api            - Lanza la API FastAPI (http://127.0.0.1:8000/docs)"
 	@echo "  test           - Ejecuta pytest (si hay tests)"
 	@echo "  notebook       - Convierte notebooks .py (EDA) a .ipynb"
-	@echo "  docker-build   - Construye imágenes Docker (pendiente)"
+	@echo "  docker-build   - Construye las imágenes Docker"
+	@echo "  docker-up      - Levanta Postgres + API (http://localhost:8000)"
+	@echo "  docker-down    - Detiene los servicios Docker"
+	@echo "  db-up          - Levanta solo PostgreSQL"
+	@echo "  db-down        - Detiene solo PostgreSQL"
 	@echo "  shap           - Ejecuta SHAP_CMD (pendiente)"
