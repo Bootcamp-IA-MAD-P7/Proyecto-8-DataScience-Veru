@@ -3,7 +3,8 @@
 Expone el modelo final (`models/catboost_final.pkl`) mediante un endpoint
 `POST /predict` que recibe los datos del paciente y devuelve la probabilidad,
 la clase y el veredicto de riesgo. Cada predicción se guarda en la base de
-datos (D11) y se consulta su historial en `GET /predictions`.
+datos (D11) y se consulta su historial en `GET /predictions`. Además sirve
+un frontend estático (D12) en `GET /`.
 
 Ejecución local:
     uvicorn BACKEND.main:app --reload
@@ -17,6 +18,7 @@ import sys
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -29,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT / "models" / "catboost_final.pkl"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 THRESHOLD = 0.5
 
@@ -166,6 +169,10 @@ def predictions(limit: int = 50):
     except Exception as exc:  # noqa: BLE001
         logger.warning("No se pudo leer el historial de la BD: %s", exc)
         return []
+
+
+if STATIC_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 
 if __name__ == "__main__":
