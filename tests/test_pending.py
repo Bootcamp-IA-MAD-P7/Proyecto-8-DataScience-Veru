@@ -1,12 +1,9 @@
-"""Tests de requisitos PENDIENTES de implementar.
+"""Tests de requisitos de productivización y CLI.
 
-Estos tests se mantienen saltados (skip) hasta que exista la funcionalidad
-correspondiente. Cuando se implemente el CLI y la productivización (p. ej.
-FastAPI/Streamlit/Gradio), descomentar el skip y ajustar el contrato.
-
-Requisitos pendientes del trabajo:
-- CLI en línea de comandos que ingrese datos y devuelva la predicción.
-- Solución que productivice el modelo (API / Streamlit / Gradio / Dash).
+Requisitos del trabajo cubiertos:
+- Aplicación en línea de comandos (CLI) que ingresa datos y devuelve la predicción.
+- Solución que productivice el modelo (API REST FastAPI).
+- Productivización: la API carga el modelo final, predice y valida la entrada.
 """
 
 import importlib.util
@@ -15,8 +12,16 @@ import sys
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parent.parent
+
+VALIDACIÓN_DATOS = {
+    "age": 75.0, "avg_glucose_level": 200.0, "bmi": 30.0,
+    "gender": "Male", "ever_married": "Yes", "work_type": "Private",
+    "residence_type": "Urban", "smoking_status": "never smoked",
+    "hypertension": 1, "heart_disease": 1,
+}
 
 
 # ---------- 3. CLI (implementado) ----------
@@ -29,13 +34,9 @@ def test_cli_script_exists():
 
 def test_cli_returns_prediction():
     """El CLI debe aceptar datos del paciente y devolver la predicción."""
-    cmd = [
-        sys.executable, str(CLI_SCRIPT),
-        "--age", "75.0", "--gender", "Male", "--heart_disease", "1",
-        "--hypertension", "1", "--smoking_status", "never smoked",
-        "--work_type", "Private", "--residence_type", "Urban",
-        "--ever_married", "Yes", "--bmi", "30.0", "--avg_glucose_level", "200.0",
-    ]
+    cmd = [sys.executable, str(CLI_SCRIPT)]
+    for k, v in VALIDACIÓN_DATOS.items():
+        cmd += [f"--{k}", str(v)]
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     output = result.stdout.lower()
@@ -62,3 +63,34 @@ def test_api_imports_final_model():
     spec.loader.exec_module(module)
     assert module.MODEL_PATH.name == "catboost_final.pkl"
     assert module.model is not None
+
+
+@pytest.fixture(scope="module")
+def client():
+    spec = importlib.util.spec_from_file_location("backend_main", API_MODULE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return TestClient(module.app)
+
+
+def test_api_health(client):
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+    assert r.json()["modelo"] == "catboost_final.pkl"
+
+
+def test_api_predict_ok(client):
+    r = client.post("/predict", json=VALIDACIÓN_DATOS)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["clase"] in (0, 1)
+    assert body["riesgo"] in ("ALTO", "BAJO")
+    assert 0.0 <= body["probabilidad_ictus"] <= 1.0
+
+
+def test_api_predict_validation_error(client):
+    datos = dict(VALIDACIÓN_DATOS)
+    datos["work_type"] = "ValorInvalido"
+    r = client.post("/predict", json=datos)
+    assert r.status_code == 422

@@ -78,6 +78,19 @@ La configuración **"med"** cumple el requisito con holgura en **todas** las mé
 - Máxima diferencia: **1.4 puntos porcentuales** (muy por debajo del límite de 5).
 - Además mantiene un **recall de test alto (0.86)**: detecta 86 de cada 100 ictus.
 
+### Validación cruzada (StratifiedKFold, 5 folds)
+
+Además de la partición train/test, cada configuración se evalúa con **validación cruzada estratificada de 5 folds sobre el train** (`scripts/train_catboost_regularized.py`, decisión D5.1). Resultados **media ± desviación**:
+
+| Configuración | Recall (CV) | Precisión (CV) | F1 (CV) |
+|---|---|---|---|
+| light (iter=100, depth=4) | 0.753 ± 0.066 | 0.137 ± 0.006 | 0.232 ± 0.011 |
+| **med (iter=100, depth=3)** | 0.793 ± 0.060 | 0.131 ± 0.010 | **0.225 ± 0.016** |
+| strong (iter=60, depth=2) | 0.838 ± 0.075 | 0.121 ± 0.010 | 0.212 ± 0.017 |
+| very-strong (iter=40, depth=2) | 0.859 ± 0.076 | 0.118 ± 0.010 | 0.208 ± 0.017 |
+
+La selección del modelo final combina ambos criterios: cumple el requisito de overfitting (tabla anterior) y tiene el **mejor F1 medio de CV entre las configuraciones que lo cumplen** → **"med"** (F1 CV 0.225).
+
 ---
 
 ## 4. Modelo final y cómo interpretarlo
@@ -138,9 +151,9 @@ Importancia de características del modelo final (CatBoost, importancia _lossfun
 
 ## 6. Conclusiones
 
-1. **El modelo final es CatBoost regularizado** (`models/catboost_final.pkl`), elegido por cumplir el **requisito de overfitting** (diferencias train-test ≤ 1.4 puntos, límite 5) y ofrecer un **recall alto (0.86)**.
+1. **El modelo final es CatBoost regularizado** (`models/catboost_final.pkl`), elegido por cumplir el **requisito de overfitting** (diferencias train-test ≤ 1.4 puntos, límite 5), ofrecer un **recall alto (0.86)** y validarse mediante **validación cruzada estratificada (StratifiedKFold, 5 folds)**.
 2. **La precisión (0.146) es baja** por el desbalance y la debilidad de las señales; es un límite estructural, no un defecto del algoritmo (trade-off precisión-recall).
-3. El proceso siguió un **plan por fases** documentado en el SDD (D3.1–D3.3): umbral → tuning → CatBoost → SMOTE → sobreajuste, descartando las opciones que no cumplían el requisito o que empeoraban la fiabilidad.
+3. El proceso siguió un **plan por fases** documentado en el SDD (D3.1–D3.3): umbral → tuning → CatBoost → SMOTE → sobreajuste, descartando las opciones que no cumplían el requisito o que empeoraban la fiabilidad, y añadiendo **validación cruzada** en el entrenamiento del modelo final (D5.1).
 4. **Vías de mejora futuras** (si se dispusiera de más tiempo/datos): incorporar variables más informativas (colesterol, HbA1c/diabetes, presión arterial, consumo de alcohol), o ingeniería de características, lo que subiría la precisión a igual recall.
 
 ---
@@ -154,13 +167,13 @@ Los entrenamientos están orquestados en el **makefile** para que la comparativa
 | `make train-rf` | Entrena Random Forest baseline → `models/random_forest_baseline.pkl` |
 | `make train-rf-smote` | Entrena Random Forest + SMOTE → `models/random_forest_smote.pkl` |
 | `make train-xgb` | Entrena XGBoost → `models/xgboost_baseline.pkl` |
-| `make train-cat` | Entrena CatBoost regularizado y guarda el modelo final → `models/catboost_final.pkl` |
+| `make train-cat` | Entrena CatBoost regularizado con validación cruzada (`StratifiedKFold`, 5 folds) y guarda el modelo final → `models/catboost_final.pkl` |
 | `make all` | Entrena los cuatro modelos (comparativa completa) |
 | `make compare` | Comprueba el requisito de overfitting (train vs test) en todos |
 
 Scripts asociados:
 - `scripts/train_random_forest.py`, `scripts/train_random_forest_smote.py`, `scripts/train_xgboost.py` → comparativa
-- `scripts/train_catboost_regularized.py` → modelo final
+- `scripts/train_catboost_regularized.py` → modelo final (incluye validación cruzada, véase D5.1)
 - `scripts/compare_train_test.py` → verificación del requisito de overfitting
 
 > Nota: solo se persisten en `models/` el modelo final (`catboost_final.pkl`) y el informe; los `.pkl` de los modelos descartados se regeneran con su script (`make train-*`), evitando acumular artefactos pesados.

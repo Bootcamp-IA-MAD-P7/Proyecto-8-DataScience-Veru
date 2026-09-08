@@ -1,6 +1,6 @@
 # Informe de Tests
 
-> Estado: suite **verde — 18 passed, 3 skipped** (ejecutado con `make test`)
+> Estado: suite **verde — 24 passed, 0 skipped** (ejecutado con `make test`)
 
 Los tests automatizados verifican de forma objetiva que los **requisitos del trabajo** se cumplen. Se ejecutan con:
 
@@ -12,8 +12,8 @@ make test        # equivale a: uv run pytest -q tests/
 
 | Resultado | Cantidad | Descripción |
 |---|---|---|
-| ✅ Passed | 18 | Requisitos implementados (dataset, preprocesado, modelo final, informe, **CLI**) |
-| ⏭️ Skipped | 3 | Requisitos **pendientes** (API/productivización) — se activarán al implementarla |
+| ✅ Passed | 24 | Todos los requisitos implementados, incluidos **CLI y API** |
+| ⏭️ Skipped | 0 | — |
 | ❌ Failed | 0 | — |
 
 ## Cobertura de requisitos
@@ -23,8 +23,8 @@ make test        # equivale a: uv run pytest -q tests/
 | Análisis exploratorio (EDA) con gráficos y descriptivos | — (documentado en notebooks/07.Informe.md) | ✅ hecho |
 | **Control de overfitting** (\|train − test\| ≤ 5 puntos) | `test_final_model_meets_overfitting_requirement` | ✅ **PASSED** |
 | Informe de rendimiento (precisión, recall, F1, AUC-ROC) | `test_report_exists`, `test_report_mentions_required_metrics[...]` | ✅ PASSED |
-| Aplicación en línea de comandos (CLI) | `test_cli_script_exists`, `test_cli_returns_prediction` | ✅ **PASSED** (implementado) |
-| Productivización (API / Streamlit / Gradio / Dash) | `test_api_module_exists`, `test_api_loads`, `test_api_imports_final_model` | ⏭️ **SKIPPED** (pendiente) |
+| Aplicación en línea de comandos (CLI) | `test_cli_script_exists`, `test_cli_returns_prediction` | ✅ **PASSED** |
+| Productivización (API FastAPI) | `test_api_module_exists`, `test_api_loads`, `test_api_imports_final_model`, `test_api_health`, `test_api_predict_ok`, `test_api_predict_validation_error` | ✅ **PASSED** |
 
 ## Detalle: tests implementados (`tests/test_model.py`)
 
@@ -55,19 +55,20 @@ make test        # equivale a: uv run pytest -q tests/
 | `test_report_exists` | El informe existe |
 | `test_report_mentions_required_metrics[...]` | Menciona Recall, Precisión, F1, AUC-ROC, CatBoost y overfitting |
 
-## Detalle: tests pendientes (`tests/test_pending.py`)
+## Detalle: tests de CLI y API (`tests/test_pending.py`)
 
-Cubren el requisito aún por implementar (la **API de productivización**).
-Están marcados con `@pytest.mark.skip` para que la suite siga en verde mientras
-se desarrolla; al crear la API solo hay que retirar el decorador.
+Cubren la productivización: la aplicación de línea de comandos y la API FastAPI que expone el modelo.
 
 | Test | Requisito al que pertenece |
 |---|---|
-| `test_cli_script_exists` | CLI — que exista `scripts/predict_cli.py` (**implementado, activo**) |
-| `test_cli_returns_prediction` | CLI — que devuelva una predicción a partir de argumentos (**implementado, activo**) |
-| `test_api_module_exists` | API — que exista `app/main.py` (FastAPI) |
+| `test_cli_script_exists` | CLI — que exista `scripts/predict_cli.py` |
+| `test_cli_returns_prediction` | CLI — que devuelva una predicción a partir de argumentos |
+| `test_api_module_exists` | API — que exista `BACKEND/main.py` (FastAPI) |
 | `test_api_loads` | API — que el módulo importe sin errores |
 | `test_api_imports_final_model` | API — que cargue el modelo final |
+| `test_api_health` | API — endpoint `GET /health` responde OK |
+| `test_api_predict_ok` | API — endpoint `POST /predict` devuelve la predicción |
+| `test_api_predict_validation_error` | API — entrada inválida devuelve 422 |
 
 ## Cómo ejecutar
 
@@ -91,6 +92,6 @@ tests/test_model.py::test_final_model_meets_overfitting_requirement PASSED
 tests/test_model.py::test_report_exists PASSED
 tests/test_model.py::test_report_mentions_required_metrics[...] PASSED
 tests/test_pending.py::test_cli_* PASSED
-tests/test_pending.py::test_api_* SKIPPED
-==================== 18 passed, 3 skipped in ~6.4s ====================
+tests/test_pending.py::test_api_* PASSED
+==================== 24 passed in ~6.5s ====================
 ```
