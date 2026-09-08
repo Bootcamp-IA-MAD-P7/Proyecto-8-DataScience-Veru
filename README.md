@@ -9,10 +9,7 @@
    - [Tecnologías utilizadas](#tecnologías-utilizadas)
    - [Propósito, problema que soluciona y público objetivo](#propósito-problema-que-soluciona-y-público-objetivo)
    - [Estructura del código](#estructura-del-código)
-   - [Despliegue en servidores](#despliegue-en-servidores)
-   - [Herramientas de nube](#herramientas-de-nube)
-   - [Contenedores (Docker / Kubernetes)](#contenedores-docker--kubernetes)
-   - [Repositorio y CI/CD](#repositorio-y-cicd)
+   - [Repositorio](#repositorio)
    - [Flujo de usuario (userflow)](#flujo-de-usuario-userflow)
 2. [Segunda parte — Parte técnica](#segunda-parte--parte-técnica)
    - [Implementaciones importantes](#implementaciones-importantes)
@@ -87,43 +84,14 @@ El ictus (accidente cerebrovascular) es una de las principales causas de mortali
 ├── makefile                 # Orquestación de tareas
 ├── pyproject.toml           # Dependencias del proyecto (uv)
 ├── uv.lock                  # Lock de dependencias
-├── dockerfile               # Contenedor (en preparación)
 └── README.md                # Este documento
 ```
 
-## Despliegue en servidores
+## Repositorio
 
-Actualmente la API se ejecuta en **local**. Opciones recomendadas para desplegarla en producción:
-
-- **Render** (opción sencilla para FastAPI): subir el repo, comando `uvicorn BACKEND.main:app --host 0.0.0.0 --port 10000`.
-- **Railway** o **Fly.io**: similares a Render, despliegue por buildpack.
-- La estafa de un modelo `.pkl` (~31 KB) lo hace portátil a cualquier host con Python.
-
-> Estado actual: **sin desplegar**. El `makefile` incluye el target `make docker-build` (en preparación) para facilitarlo.
-
-## Herramientas de nube
-
-El proyecto es **independiente de servicios cloud** por diseño:
-
-- Los artefactos del modelo (`*.pkl`) se versionan en el repo (no se descargan de un bucket).
-- Si se quisiera, el `catboost_final.pkl` es pequeño y podría servirse desde **S3/Google Cloud Storage** o como artefacto de **GitHub Releases**.
-
-> Estado actual: **no se utilizan servicios cloud**. No hay dependencia de S3, GCS, Firebase, etc.
-
-## Contenedores (Docker / Kubernetes)
-
-- Existe un **`dockerfile`** en la raíz (aún en preparación) y un target `make docker-build` que invoca `docker compose build`.
-- Kubernetes **no** se usa (proyecto académico; no se justifica un clúster).
-
-## Repositorio y CI/CD
-
-| Aspecto | Estado |
-|---|---|
-| Repositorio remoto | GitHub: `Bootcamp-IA-MAD-P7/Proyecto-8-DataScience-Veru` |
-| Ramas | `main`, `dev`, `eda`, `paths`, `models`, `informe`, `fastapi`, `readme` |
-| Integración continua (GitHub Actions) | **No configurada**. Recomendación: un workflow que ejecute `uv run pytest -q tests/` en cada PR para bloquear merges si fallan los tests. |
-
-> La suite (24 tests) es la verificación manual equivalente: `make test`.
+- Repositorio remoto: GitHub — `Bootcamp-IA-MAD-P7/Proyecto-8-DataScience-Veru`.
+- Organización: ramas *feature* (`eda`, `models`, `informe`, `fastapi`, `readme`) fusionadas en `dev`; `main` solo al cierre del proyecto.
+- Commits con mensajes descriptivos en español y prefijo del tipo de cambio (`feat/`, `fix/`, `chore/`, `docs/`).
 
 ## Flujo de usuario (userflow)
 
