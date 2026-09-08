@@ -15,18 +15,41 @@ df = pd.read_csv(ROOT / "data" / "stroke_dataset.csv")
 # %%
 df.boxplot(column='age', patch_artist=True, 
            boxprops=dict(facecolor='lightgreen'))
-plt.title('Hypertension Distribution')  
+plt.title('Age Distribution')  
 plt.ylabel('age')  
 plt.show()
 # %%
 df.boxplot(column='avg_glucose_level', patch_artist=True, 
            boxprops=dict(facecolor='lightgreen'))
-plt.title('Hypertension Distribution') 
+plt.title('Avg Glucose Level Distribution') 
 plt.ylabel('avg_glucose_level')  
 plt.show()
 # %%
 df.boxplot(column='bmi', patch_artist=True, 
            boxprops=dict(facecolor='lightgreen'))
-plt.title('Hypertension Distribution') 
-plt.ylabel('avbmig_glucose_level')  
+plt.title('BMI Distribution') 
+plt.ylabel('bmi')  
+plt.show()
+
+# %%
+# Boxplots por grupo (ictus vs no ictus): más informativos que el univariante,
+# muestran cómo se distribuye cada variable según el resultado.
+sns.boxplot(x='stroke', y='age', hue='stroke', data=df, palette='Set2', legend=False)
+plt.title('Age by Stroke')
+plt.xlabel('stroke')
+plt.ylabel('age')
+plt.show()
+
+# %%
+sns.boxplot(x='stroke', y='avg_glucose_level', hue='stroke', data=df, palette='Set2', legend=False)
+plt.title('Avg Glucose Level by Stroke')
+plt.xlabel('stroke')
+plt.ylabel('avg_glucose_level')
+plt.show()
+
+# %%
+sns.boxplot(x='stroke', y='bmi', hue='stroke', data=df, palette='Set2', legend=False)
+plt.title('BMI by Stroke')
+plt.xlabel('stroke')
+plt.ylabel('bmi')
 plt.show()
