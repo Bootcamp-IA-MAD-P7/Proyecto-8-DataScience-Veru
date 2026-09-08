@@ -91,6 +91,17 @@ Además de la partición train/test, cada configuración se evalúa con **valida
 
 La selección del modelo final combina ambos criterios: cumple el requisito de overfitting (tabla anterior) y tiene el **mejor F1 medio de CV entre las configuraciones que lo cumplen** → **"med"** (F1 CV 0.225).
 
+### Optimización de hiperparámetros con GridSearchCV (decisión D5.2)
+
+Además, se aplica **GridSearchCV** de scikit-learn (sin dependencias externas; no se requirió Optuna) sobre los hiperparámetros de CatBoost, con **scoring = F1 y StratifiedKFold(5)** dentro de la misma pipeline. Rejilla: `iterations ∈ {60,100,150}`, `depth ∈ {2,3,4}`, `learning_rate ∈ {0.05,0.1}`, `min_data_in_leaf ∈ {4,8,16}`, `l2_leaf_reg ∈ {4,8,16}`, `bagging_temperature ∈ {0,1}` (324 combinaciones × 5 folds).
+
+| Candidato | F1 medio de CV | ¿Cumple overfitting? |
+|---|---|---|
+| GridSearch best (iter=150, depth=4, lr=0.1, min_data_in_leaf=4, l2=4, bagging=0) | 0.235 | ❌ (diff recall 0.109 > 5 pts) |
+| **CatBoost "med"** | 0.225 | ✅ |
+
+La combinación que maximiza F1 con GridSearch **sobreajusta** (diff recall 10.9 puntos > límite de 5), por lo que el requisito del trabajo prevalece y el modelo final sigue siendo **"med"**: es la de **mejor F1 medio de CV entre las que cumplen** el criterio de overfitting. Así se cubren conjuntamente **validación cruzada** (D5.1) y **optimización con herramienta de tuning** (D5.2).
+
 ---
 
 ## 4. Modelo final y cómo interpretarlo
@@ -151,9 +162,9 @@ Importancia de características del modelo final (CatBoost, importancia _lossfun
 
 ## 6. Conclusiones
 
-1. **El modelo final es CatBoost regularizado** (`models/catboost_final.pkl`), elegido por cumplir el **requisito de overfitting** (diferencias train-test ≤ 1.4 puntos, límite 5), ofrecer un **recall alto (0.86)** y validarse mediante **validación cruzada estratificada (StratifiedKFold, 5 folds)**.
+1. **El modelo final es CatBoost regularizado** (`models/catboost_final.pkl`), elegido por cumplir el **requisito de overfitting** (diferencias train-test ≤ 1.4 puntos, límite 5), ofrecer un **recall alto (0.86)** y validarse mediante **validación cruzada estratificada (`StratifiedKFold`, 5 folds)** y **optimización de hiperparámetros con GridSearchCV**.
 2. **La precisión (0.146) es baja** por el desbalance y la debilidad de las señales; es un límite estructural, no un defecto del algoritmo (trade-off precisión-recall).
-3. El proceso siguió un **plan por fases** documentado en el SDD (D3.1–D3.3): umbral → tuning → CatBoost → SMOTE → sobreajuste, descartando las opciones que no cumplían el requisito o que empeoraban la fiabilidad, y añadiendo **validación cruzada** en el entrenamiento del modelo final (D5.1).
+3. El proceso siguió un **plan por fases** documentado en el SDD (D3.1–D3.3): umbral → tuning → CatBoost → SMOTE → sobreajuste, descartando las opciones que no cumplían el requisito o que empeoraban la fiabilidad, y añadiendo **validación cruzada** (D5.1) y **optimización de hiperparámetros con GridSearchCV** (D5.2) en el entrenamiento del modelo final.
 4. **Vías de mejora futuras** (si se dispusiera de más tiempo/datos): incorporar variables más informativas (colesterol, HbA1c/diabetes, presión arterial, consumo de alcohol), o ingeniería de características, lo que subiría la precisión a igual recall.
 
 ---
@@ -167,13 +178,13 @@ Los entrenamientos están orquestados en el **makefile** para que la comparativa
 | `make train-rf` | Entrena Random Forest baseline → `models/random_forest_baseline.pkl` |
 | `make train-rf-smote` | Entrena Random Forest + SMOTE → `models/random_forest_smote.pkl` |
 | `make train-xgb` | Entrena XGBoost → `models/xgboost_baseline.pkl` |
-| `make train-cat` | Entrena CatBoost regularizado con validación cruzada (`StratifiedKFold`, 5 folds) y guarda el modelo final → `models/catboost_final.pkl` |
+| `make train-cat` | Entrena CatBoost regularizado: validación cruzada (`StratifiedKFold`, 5 folds) + optimización con GridSearchCV, guarda el modelo final → `models/catboost_final.pkl` |
 | `make all` | Entrena los cuatro modelos (comparativa completa) |
 | `make compare` | Comprueba el requisito de overfitting (train vs test) en todos |
 
 Scripts asociados:
 - `scripts/train_random_forest.py`, `scripts/train_random_forest_smote.py`, `scripts/train_xgboost.py` → comparativa
-- `scripts/train_catboost_regularized.py` → modelo final (incluye validación cruzada, véase D5.1)
+- `scripts/train_catboost_regularized.py` → modelo final (validación cruzada + GridSearchCV, véase D5.1–D5.2)
 - `scripts/compare_train_test.py` → verificación del requisito de overfitting
 
 > Nota: solo se persisten en `models/` el modelo final (`catboost_final.pkl`) y el informe; los `.pkl` de los modelos descartados se regeneran con su script (`make train-*`), evitando acumular artefactos pesados.
