@@ -140,6 +140,8 @@ Salida: `{"probabilidad_ictus":0.8855,"clase":1,"riesgo":"ALTO"}`
 - **Pipeline de preprocesado + modelo** (scikit-learn `Pipeline`): one-hot encoding de categóricas, estandarización de numéricas y `passthrough` de binarias, con el modelo al final. Previene **data leakage** (D6).
 - **Tratamiento del desbalance**: `scale_pos_weight` (CatBoost) y `class_weight` / SMOTE (comparativa). El desbalance (4.98 % de ictus) hace que la precisión sea estructuralmente baja (0.146) a cambio de un recall alto.
 - **Control de overfitting**: reducción de iteraciones, profundidad (`depth`), `min_data_in_leaf`, `l2_leaf_reg` y `bagging_temperature`. Verificado con `scripts/compare_train_test.py` y con el test automático `test_final_model_meets_overfitting_requirement`.
+- **Validación cruzada**: `StratifiedKFold(5)` sobre el train en el entrenamiento del modelo final (`train_catboost_regularized.py`), reportando media ± desv de recall/precisión/F1 por configuración (decisión D5.1).
+- **Optimización de hiperparámetros**: `GridSearchCV` (scikit-learn) con rejilla de 6 hiperparámetros, scoring **F1** y CV estratificada dentro de la misma pipeline (sin data leakage) (decisión D5.2).
 - **CLI** (`argparse`): `scripts/predict_cli.py`, validación de argumentos y veredicto legible.
 - **API REST** (FastAPI + Pydantic): modelo de entrada tipado (`PatientData`), validación de dominios (género, trabajo, fumador…), respuestas tipadas (`PredictionResponse`) y error 422 ante entradas inválidas.
 - **Naming**: ver [Convenciones de nombres](#convenciones-de-nombres).
@@ -202,7 +204,7 @@ Columnas del dataset:
 
 ```
 main  ─────────────────────────── (solo al final del proyecto)
-dev   ◄── models ◄── informe ◄── fastapi ◄── readme
+dev   ◄── models ◄── informe ◄── fastapi ◄── validacioncruzada ◄── readme
 ```
 
 | Rama | Contenido |
@@ -213,15 +215,17 @@ dev   ◄── models ◄── informe ◄── fastapi ◄── readme
 | `models` | Entrenamiento de modelos y tests base |
 | `informe` | Informe + feature importance |
 | `fastapi` | API de productivización y sus tests |
+| `validacioncruzada` | Validación cruzada y optimización (GridSearchCV) del modelo final |
 | `readme` | Documentación del proyecto |
 
 **Commits**: mensajes **descriptivos en español**, estilo *convencional* (`feat/`, `fix/`, `chore/`, `docs/`):
 
 ```text
+feat/optimizacion: GridSearchCV + validación cruzada (D5.1–D5.2)
+chore/completar tarea: validación cruzada del modelo final
+fix/readme con lo que sí está hecho
 feat/tests: tests funcionales de la API FastAPI y limpieza de __pycache__
-feat/añadir feature importance al informe
 entrenamiento de modelos y tests pasados
-chore/creados documentos del 01 al 07 en notebooks
 ```
 
 ## Documentación general y de la API
@@ -283,6 +287,8 @@ chore/creados documentos del 01 al 07 en notebooks
 | F1 | 0.250 |
 | \|train − test\| (todas) | ≤ 1.4 puntos ✅ |
 
+La selección se hace con **validación cruzada (`StratifiedKFold`, 5 folds)** y **GridSearchCV (scoring F1)**: ambas cubren el requisito de CV y de optimización con herramienta de tuning. La mejor combinación del grid (F1 CV 0.235) sobreajusta (diff recall 10.9 pts > 5), así que prevalece el requisito del trabajo y gana **"med"** (mejor F1 medio de CV = 0.225 entre las que cumplen).
+
 **Análisis de características** (feature importance): `age` concentra el **64.2 %** de la importancia; le siguen `bmi` (11.0 %) y `avg_glucose_level` (9.4 %).
 
 ### Requisitos de la asignatura
@@ -291,7 +297,12 @@ chore/creados documentos del 01 al 07 en notebooks
 |---|---|
 | Modelo ML funcional que prediga riesgo de ictus | ✅ `catboost_final.pkl` |
 | EDA con gráficos y estadísticas | ✅ notebooks 01–07 |
+| Modelo de ML con técnicas de **ensemble** | ✅ CatBoost (y comparativa con RF/XGBoost) |
+| Uso de **validación cruzada** | ✅ `StratifiedKFold(5)` en el entrenamiento del modelo final (D5.1) |
+| **Mitigar el desbalance** (4.98 % positivos) | ✅ `scale_pos_weight` + comparativa con `class_weight`/SMOTE |
+| **Optimización de hiperparámetros** con herramienta de tuning | ✅ GridSearchCV (D5.2) |
 | Overfitting \|train − test\| ≤ 5 puntos | ✅ CatBoost final ≤ 1.4 pts, verificado por test |
+| **Test unitarios** | ✅ 24 tests (`make test`) |
 | Aplicación de línea de comandos | ✅ `scripts/predict_cli.py` |
 | Solución que productivice el modelo | ✅ API FastAPI (`BACKEND/main.py`) |
 | Informe con precisión/recall/F1/AUC-ROC + características | ✅ `models/INFORME_MODELOS.md` (secc. 4.1) |
@@ -306,8 +317,8 @@ chore/creados documentos del 01 al 07 en notebooks
 # 1. Instalar dependencias (uv)
 uv sync
 
-# 2. (Opcional) Reentrenar todos los modelos
-make all          # o solo el final: make train-cat
+# 2. (Opcional) Reentrenar el modelo final (validación cruzada + GridSearchCV)
+make train-cat     # o todos: make all
 
 # 3. Verificar el requisito de overfitting
 make compare
