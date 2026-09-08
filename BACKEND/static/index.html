@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Riesgo de Ictus · Predictor</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <h1>🧠 Predictor de riesgo de ictus</h1>
+    <p class="subtitle">Modelo CatBoost final · API FastAPI · Score: recall 0.86</p>
+  </header>
+
+  <main>
+    <section class="card form-card">
+      <h2>Datos del paciente</h2>
+      <form id="prediction-form">
+        <div class="grid">
+          <label>Edad (años)
+            <input type="number" id="age" name="age" min="0" max="120" step="1" value="60" required>
+          </label>
+          <label>Glucosa media (mg/dL)
+            <input type="number" id="avg_glucose_level" name="avg_glucose_level" min="0" max="300" step="0.1" value="110" required>
+          </label>
+          <label>IMC (BMI)
+            <input type="number" id="bmi" name="bmi" min="5" max="70" step="0.1" value="26" required>
+          </label>
+          <label>Gender
+            <select id="gender" name="gender">
+              <option>Male</option>
+              <option>Female</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>¿Casado/a?
+            <select id="ever_married" name="ever_married">
+              <option>Yes</option>
+              <option>No</option>
+            </select>
+          </label>
+          <label>Tipo de trabajo
+            <select id="work_type" name="work_type">
+              <option>Private</option>
+              <option>Self-employed</option>
+              <option>Govt_job</option>
+              <option>children</option>
+              <option>Never_worked</option>
+            </select>
+          </label>
+          <label>Residencia
+            <select id="residence_type" name="residence_type">
+              <option>Urban</option>
+              <option>Rural</option>
+            </select>
+          </label>
+          <label>Fumador
+            <select id="smoking_status" name="smoking_status">
+              <option>never smoked</option>
+              <option>formerly smoked</option>
+              <option>smokes</option>
+              <option>Unknown</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="hypertension" value="1"> Hipertensión</label>
+          <label class="check"><input type="checkbox" id="heart_disease" value="1"> Enfermedad cardíaca</label>
+        </div>
+        <button type="submit">🔮 Predecir riesgo</button>
+      </form>
+    </section>
+
+    <section class="card result-card" id="result" hidden>
+      <h2>Resultado</h2>
+      <div class="gauge">
+        <div class="needle" id="needle"></div>
+        <div class="gauge-fill" id="gauge-fill"></div>
+        <div class="gauge-center">
+          <span id="prob-value">0%</span>
+        </div>
+        <div class="gauge-scale"><span>0%</span><span>50%</span><span>100%</span></div>
+      </div>
+      <p class="verdict" id="verdict">—</p>
+    </section>
+
+    <section class="card history-card">
+      <h2>Historial de predicciones <button id="refresh" class="tiny">↻</button></h2>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Edad</th>
+            <th>Género</th>
+            <th>Glucosa</th>
+            <th>IMC</th>
+            <th>Prob.</th>
+            <th>Riesgo</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody id="history-body">
+          <tr><td colspan="8">Cargando…</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
