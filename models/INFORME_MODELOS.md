@@ -100,6 +100,29 @@ La configuración **"med"** cumple el requisito con holgura en **todas** las mé
 
 ---
 
+## 4.1 Análisis de las características más importantes
+
+Importancia de características del modelo final (CatBoost, importancia _lossfunction_ sobre las 19 columnas tras el preprocesado, agrupadas por variable original):
+
+| Variable | Importancia |
+|---|---|
+| **age** | **64.2 %** |
+| bmi | 11.0 % |
+| avg_glucose_level | 9.4 % |
+| hypertension | 3.3 % |
+| smoking_status | 3.6 % |
+| work_type | 4.6 % |
+| gender | 1.6 % |
+| ever_married | 0.8 % |
+| heart_disease | 0.7 % |
+| Residence_type | 0.8 % |
+
+**Lectura:** `age` concentra **casi dos tercios de la importancia** del modelo. Es coherente con el EDA (07.Informe.md), donde la edad era la variable con mayor separación entre grupos (corr. 0.246 con ictus). Le siguen, muy por debajo, **bmi** y **avg_glucose_level** (variables relacionadas con el perfil metabólico). El resto aporta poco: `hypertension`, `smoking_status` y `work_type` contribuyen marginalmente, y `gender`, `ever_married`, `heart_disease` y `Residence_type` son casi irrelevantes para el modelo.
+
+**Implicación:** la señal de riesgo de ictus en estos datos proviene fundamentalmente de la **edad** (y en menor medida del perfil metabólico). La baja precisión (0.146) está ligada a que el resto de variables aportan apenas información: la vía de mejora real sería añadir variables más informativas (colesterol, HbA1c/diabetes, presión arterial), tal como se anota en las conclusiones.
+
+---
+
 ## 5. Inconvenientes encontrados y soluciones
 
 | Inconveniente | Qué pasa | Solución aplicada |
