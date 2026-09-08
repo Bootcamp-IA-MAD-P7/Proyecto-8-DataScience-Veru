@@ -62,8 +62,10 @@ El ictus (accidente cerebrovascular) es una de las principales causas de mortali
 
 ```
 .
-├── BACKEND/                 # API REST FastAPI (productivización)
-│   └── main.py              #   Endpoints /predict y /health
+├── BACKEND/                 # API REST FastAPI (productivización) + frontend
+│   ├── main.py              #   Endpoints /predict, /health, /predictions y / (frontend)
+│   ├── db.py                #   Adaptador de BD (PostgreSQL / SQLite)
+│   └── static/              #   Frontend (index.html, styles.css, app.js)
 ├── data/                    # Datos: stroke_dataset.csv (n = 4981)
 ├── models/                  # Modelos serializados (.pkl) e informes
 │   ├── catboost_final.pkl   #   MODELO FINAL (CatBoost regularizado)
@@ -81,7 +83,9 @@ El ictus (accidente cerebrovascular) es una de las principales causas de mortali
 │   └── predict_cli.py               #   Aplicación de línea de comandos (CLI)
 ├── tests/                   # Suite de tests (pytest) + INFORME_TESTS.md
 ├── SDD/                     # Documento de diseño (Decisiones D1–D11)
-├── makefile                 # Orquestación de tareas
+├── makefile                 # Orquestación de tareas (incl. targets Docker)
+├── dockerfile               # Despliegue en contenedor (Docker)
+├── docker-compose.yml       # Orquestación Docker: db (PostgreSQL) + api
 ├── pyproject.toml           # Dependencias del proyecto (uv)
 ├── uv.lock                  # Lock de dependencias
 └── README.md                # Este documento
@@ -90,8 +94,21 @@ El ictus (accidente cerebrovascular) es una de las principales causas de mortali
 ## Repositorio
 
 - Repositorio remoto: GitHub — `Bootcamp-IA-MAD-P7/Proyecto-8-DataScience-Veru`.
-- Organización: ramas *feature* (`eda`, `models`, `informe`, `fastapi`, `readme`) fusionadas en `dev`; `main` solo al cierre del proyecto.
+- Organización: ramas *feature* (`eda`, `models`, `informe`, `fastapi`, `database`, `frontend`, `docker`) fusionadas en `dev`; `main` solo al cierre del proyecto.
 - Commits con mensajes descriptivos en español y prefijo del tipo de cambio (`feat/`, `fix/`, `chore/`, `docs/`).
+
+## Contenedores y despliegue
+
+**Docker (configurado):** la aplicación se contenedoriza con `dockerfile` (imagen `uv`/Python 3.13) y se orquesta con `docker-compose.yml` en dos servicios: `db` (PostgreSQL 16) y `api` (FastAPI + frontend + modelo).
+
+```bash
+make docker-up     # construye y levanta Postgres + API en http://localhost:8000
+make docker-down   # detiene los servicios
+make db-up         # solo PostgreSQL
+make db-down       # solo PostgreSQL (detiene)
+```
+
+**Despliegue en un servidor público (pendiente):** el despliegue en **Render** (Web Service + PostgreSQL) está **planificado pero no finalizado**. Ejecutarlo localmente: `make api` → `http://127.0.0.1:8000`. En la demo la app se muestra en local; el despliegue en la nube queda como continuación del proyecto.
 
 ## Flujo de usuario (userflow)
 
@@ -108,6 +125,15 @@ Usuario → introduce datos del paciente (--age, --gender, ...)
 ```
 Cliente (curl/Postman/app) --> POST /predict  (JSON con datos del paciente)
                             --> {probabilidad_ictus, clase, riesgo}
+                            --> GET /predictions (historial guardado en BD)
+```
+
+**Vía web (frontend `BACKEND/static/`):**
+
+```
+Navegador --> GET /  (página con formulario de 10 campos)
+          --> POST /predict (envía el formulario en JSON)
+          --> gauge de riesgo + veredicto + tabla de historial (GET /predictions)
 ```
 
 **Ejemplo real (CLI):**
@@ -143,6 +169,9 @@ Salida: `{"probabilidad_ictus":0.8855,"clase":1,"riesgo":"ALTO"}`
 - **Validación cruzada**: `StratifiedKFold(5)` sobre el train en el entrenamiento del modelo final (`train_catboost_regularized.py`), reportando media ± desv de recall/precisión/F1 por configuración (decisión D5.1).
 - **Optimización de hiperparámetros**: `GridSearchCV` (scikit-learn) con rejilla de 6 hiperparámetros, scoring **F1** y CV estratificada dentro de la misma pipeline (sin data leakage) (decisión D5.2).
 - **CLI** (`argparse`): `scripts/predict_cli.py`, validación de argumentos y veredicto legible.
+- **Base de datos (historial)**: `BACKEND/db.py` guarda cada `/predict` en una tabla `predictions`; PostgreSQL (`DATABASE_URL`) en Docker o SQLite por defecto (decisión D11).
+- **Frontend web**: `BACKEND/static/` servido por FastAPI; formulario con los 10 campos, gauge de riesgo y tabla de historial (decisión D12).
+- **Docker**: `dockerfile` + `docker-compose.yml` con Postgres y la API (decisión D13).
 - **API REST** (FastAPI + Pydantic): modelo de entrada tipado (`PatientData`), validación de dominios (género, trabajo, fumador…), respuestas tipadas (`PredictionResponse`) y error 422 ante entradas inválidas.
 - **Naming**: ver [Convenciones de nombres](#convenciones-de-nombres).
 
@@ -331,6 +360,10 @@ La selección se hace con **validación cruzada (`StratifiedKFold`, 5 folds)** y
 | **Test unitarios** | ✅ 24 tests (`make test`) |
 | Aplicación de línea de comandos | ✅ `scripts/predict_cli.py` |
 | Solución que productivice el modelo | ✅ API FastAPI (`BACKEND/main.py`) |
+| Conexión con base de datos | ✅ PostgreSQL/SQLite (`BACKEND/db.py`, D11) |
+| Frontend para visualizar la app | ✅ `BACKEND/static/` servido por la API (D12) |
+| Contenerización (Docker) | ✅ `dockerfile` + `docker-compose.yml` (D13) |
+| Despliegue en un servidor público | ⏳ Planificado en Render (pendiente de completar) |
 | Informe con precisión/recall/F1/AUC-ROC + características | ✅ `models/INFORME_MODELOS.md` (secc. 4.1) |
 | Repo Git con ramas organizadas y commits limpios | ✅ flujo feature → `dev` → `main` |
 | Documentación y README | ✅ este documento |
@@ -355,8 +388,11 @@ make test         # 24 passed
 # 5a. Predecir por CLI
 make predict ARGS="--age 75 --gender Male --hypertension 1 ..."
 
-# 5b. Lanzar la API
-make api          # → http://127.0.0.1:8000/docs
+# 5b. Lanzar la API + frontend
+make api          # → http://127.0.0.1:8000  (web)  y  /docs (Swagger)
+
+# 5c. (Opcional) Con Docker + PostgreSQL
+make docker-up    # → http://localhost:8000 (API + frontend + historial en Postgres)
 ```
 
 ---
