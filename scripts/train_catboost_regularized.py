@@ -15,7 +15,7 @@ import pandas as pd
 from catboost import CatBoostClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import f1_score, precision_score, recall_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -93,14 +93,15 @@ def main():
     spw = (y_train == 0).sum() / max((y_train == 1).sum(), 1)
 
     print(f"Criterio: |train - test| <= {MAX_DIFF*100:.0f} puntos (umbral {THRESHOLD})")
+    print(f"Validación cruzada: StratifiedKFold(5) sobre el train")
     print("=" * 90)
 
-    # Mejor configuración que cumple el criterio (por F1 en test)
-    best = {"f1": -1, "pipe": None, "name": None}
+    # Mejor configuración que cumple el criterio (por F1 medio de CV)
+    best = {"f1_cv": -1, "pipe": None, "name": None}
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
     for cfg in CONFIGS:
         pipe, name = build_pipeline(spw, cfg)
-        pipe.fit(X_train, y_train)
 
         def metrics(Xs, ys):
             proba = pipe.predict_proba(Xs)[:, 1]
@@ -111,10 +112,37 @@ def main():
                 "f1": f1_score(ys, pred),
             }
 
+        # --- Validación cruzada (5 folds) sobre el train ---
+        folds = {"recall": [], "precision": [], "f1": []}
+        for tri, vai in skf.split(X_train, y_train):
+            p = build_pipeline(spw, cfg)[0]
+            p.fit(X_train.iloc[tri], y_train.iloc[tri])
+            proba = p.predict_proba(X_train.iloc[vai])[:, 1]
+            pred = (proba >= THRESHOLD).astype(int)
+            yv = y_train.iloc[vai]
+            folds["recall"].append(recall_score(yv, pred))
+            folds["precision"].append(precision_score(yv, pred))
+            folds["f1"].append(f1_score(yv, pred))
+
+        print(f"\n### CatBoost {name}")
+
+        print(f"--- Validación cruzada (5 folds, media ± desv) ---")
+        print(f"{'Métrica':<10} | {'Media':>7} | {'±Desv':>7}")
+        print("-" * 40)
+        f1_cv = 0.0
+        for m in ["recall", "precision", "f1"]:
+            mean = sum(folds[m]) / len(folds[m])
+            dev = (sum((v - mean) ** 2 for v in folds[m]) / len(folds[m])) ** 0.5
+            if m == "f1":
+                f1_cv = mean
+            print(f"{m:<10} | {mean:>7.3f} | {dev:>7.3f}")
+
+        # --- Evaluación train / test ---
+        pipe.fit(X_train, y_train)
         tr = metrics(X_train, y_train)
         te = metrics(X_test, y_test)
 
-        print(f"\n### CatBoost {name}")
+        print(f"--- Train vs test (requisito overfitting) ---")
         print(f"{'Métrica':<10} | {'Train':>7} | {'Test':>7} | {'|Diff|':>8} | {'Cumple?':>8}")
         print("-" * 60)
         all_ok = True
@@ -130,9 +158,9 @@ def main():
         safe = name.replace(" ", "_").replace("(", "").replace(")", "").replace(",", "")
         joblib.dump(pipe, MODEL_DIR / f"catboost_reg_{safe}.pkl")
 
-        # Guardar como final la mejor config que cumpla el criterio (por F1 test)
-        if all_ok and te["f1"] > best["f1"]:
-            best = {"f1": te["f1"], "pipe": pipe, "name": name}
+        # Guardar como final la mejor config que cumpla (por F1 medio de CV)
+        if all_ok and f1_cv > best["f1_cv"]:
+            best = {"f1_cv": f1_cv, "pipe": pipe, "name": name}
 
     print("\nNota: se reclasifica con umbral 0.5. Si ninguna configuración cumple, "
           "la próxima vía es ajustar el umbral con validación cruzada u OOF.")
@@ -140,7 +168,7 @@ def main():
     if best["pipe"] is not None:
         joblib.dump(best["pipe"], MODEL_DIR / "catboost_final.pkl")
         print(f"\nMODELO FINAL guardado en: {MODEL_DIR / 'catboost_final.pkl'}"
-              f"  ({best['name']}, F1 test {best['f1']:.3f})")
+              f"  ({best['name']}, F1 CV {best['f1_cv']:.3f})")
     else:
         print("\nNinguna configuración cumplió el criterio; no se sobreescribe catboost_final.pkl.")
 
