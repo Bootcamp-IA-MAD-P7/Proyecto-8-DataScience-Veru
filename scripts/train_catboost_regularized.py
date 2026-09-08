@@ -1,11 +1,15 @@
-"""Control de overfitting sobre CatBoost.
+"""Control de overfitting y optimización sobre CatBoost.
 
 Objetivo del trabajo: |train - test| <= 5 puntos porcentuales en las métricas
 de clasificación (recall, precisión, F1).
 
-Se prueban varias configuraciones de regularización (menos iteraciones,
-profundidad limitada, min_child_weight, l2_leaf_reg, bagging) y se mide la
-diferencia train vs test para elegir la que cumple el criterio.
+Proceso:
+1. Se prueban configuraciones de regularización (menos iteraciones, profundidad
+   limitada, min_data_in_leaf, l2_leaf_reg, bagging) evaluadas con validación
+   cruzada estratificada (StratifiedKFold, 5 folds).
+2. Se optimizan hiperparámetros con GridSearchCV (scoring = F1, misma CV).
+3. Se elige como final el modelo que cumple el requisito train-vs-test con
+   mejor F1 medio de CV.
 """
 
 from pathlib import Path
@@ -15,7 +19,7 @@ import pandas as pd
 from catboost import CatBoostClassifier
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import f1_score, precision_score, recall_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -46,6 +50,18 @@ CONFIGS = [
     {"name": "very-strong (iter=40, depth=2)", "iterations": 40, "depth": 2,
      "min_data_in_leaf": 40, "l2_leaf_reg": 30, "bagging_temperature": 3},
 ]
+
+# Rejilla para optimización con GridSearchCV (parámetros del step "model"
+# dentro de la pipeline). Prefijos "model__" por el nombre del step.
+PARAM_GRID = {
+    "model__iterations": [60, 100, 150],
+    "model__depth": [2, 3, 4],
+    "model__learning_rate": [0.05, 0.1],
+    "model__min_data_in_leaf": [4, 8, 16],
+    "model__l2_leaf_reg": [4, 8, 16],
+    "model__bagging_temperature": [0, 1],
+}
+GRID_SPLITS = 5
 
 
 def build_preprocessor():
@@ -93,14 +109,15 @@ def main():
     spw = (y_train == 0).sum() / max((y_train == 1).sum(), 1)
 
     print(f"Criterio: |train - test| <= {MAX_DIFF*100:.0f} puntos (umbral {THRESHOLD})")
+    print(f"Validación cruzada: StratifiedKFold(5) sobre el train")
     print("=" * 90)
 
-    # Mejor configuración que cumple el criterio (por F1 en test)
-    best = {"f1": -1, "pipe": None, "name": None}
+    # Mejor configuración que cumple el criterio (por F1 medio de CV)
+    best = {"f1_cv": -1, "pipe": None, "name": None}
+    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
     for cfg in CONFIGS:
         pipe, name = build_pipeline(spw, cfg)
-        pipe.fit(X_train, y_train)
 
         def metrics(Xs, ys):
             proba = pipe.predict_proba(Xs)[:, 1]
@@ -111,10 +128,37 @@ def main():
                 "f1": f1_score(ys, pred),
             }
 
+        # --- Validación cruzada (5 folds) sobre el train ---
+        folds = {"recall": [], "precision": [], "f1": []}
+        for tri, vai in skf.split(X_train, y_train):
+            p = build_pipeline(spw, cfg)[0]
+            p.fit(X_train.iloc[tri], y_train.iloc[tri])
+            proba = p.predict_proba(X_train.iloc[vai])[:, 1]
+            pred = (proba >= THRESHOLD).astype(int)
+            yv = y_train.iloc[vai]
+            folds["recall"].append(recall_score(yv, pred))
+            folds["precision"].append(precision_score(yv, pred))
+            folds["f1"].append(f1_score(yv, pred))
+
+        print(f"\n### CatBoost {name}")
+
+        print(f"--- Validación cruzada (5 folds, media ± desv) ---")
+        print(f"{'Métrica':<10} | {'Media':>7} | {'±Desv':>7}")
+        print("-" * 40)
+        f1_cv = 0.0
+        for m in ["recall", "precision", "f1"]:
+            mean = sum(folds[m]) / len(folds[m])
+            dev = (sum((v - mean) ** 2 for v in folds[m]) / len(folds[m])) ** 0.5
+            if m == "f1":
+                f1_cv = mean
+            print(f"{m:<10} | {mean:>7.3f} | {dev:>7.3f}")
+
+        # --- Evaluación train / test ---
+        pipe.fit(X_train, y_train)
         tr = metrics(X_train, y_train)
         te = metrics(X_test, y_test)
 
-        print(f"\n### CatBoost {name}")
+        print(f"--- Train vs test (requisito overfitting) ---")
         print(f"{'Métrica':<10} | {'Train':>7} | {'Test':>7} | {'|Diff|':>8} | {'Cumple?':>8}")
         print("-" * 60)
         all_ok = True
@@ -130,17 +174,73 @@ def main():
         safe = name.replace(" ", "_").replace("(", "").replace(")", "").replace(",", "")
         joblib.dump(pipe, MODEL_DIR / f"catboost_reg_{safe}.pkl")
 
-        # Guardar como final la mejor config que cumpla el criterio (por F1 test)
-        if all_ok and te["f1"] > best["f1"]:
-            best = {"f1": te["f1"], "pipe": pipe, "name": name}
+        # Guardar como final la mejor config que cumpla (por F1 medio de CV)
+        if all_ok and f1_cv > best["f1_cv"]:
+            best = {"f1_cv": f1_cv, "pipe": pipe, "name": name}
 
     print("\nNota: se reclasifica con umbral 0.5. Si ninguna configuración cumple, "
           "la próxima vía es ajustar el umbral con validación cruzada u OOF.")
 
+    # --- Optimización con GridSearchCV (scoring = F1, CV estratificada) ---
+    print("\n" + "=" * 90)
+    print("Optimización de hiperparámetros con GridSearchCV"
+          f" (scoring=f1, StratifiedKFold({GRID_SPLITS}))")
+    print("=" * 90)
+
+    pipe_base, _ = build_pipeline(spw, CONFIGS[0])
+    grid = GridSearchCV(
+        pipe_base,
+        PARAM_GRID,
+        scoring="f1",
+        cv=StratifiedKFold(n_splits=GRID_SPLITS, shuffle=True, random_state=RANDOM_STATE),
+        refit=True,
+        verbose=1,
+        n_jobs=-1,
+    )
+    grid.fit(X_train, y_train)
+
+    def describe_params(params):
+        return (f"iter={params['model__iterations']}, depth={params['model__depth']}, "
+                f"lr={params['model__learning_rate']}, "
+                f"min_data_in_leaf={params['model__min_data_in_leaf']}, "
+                f"l2={params['model__l2_leaf_reg']}, bagging={params['model__bagging_temperature']}")
+
+    best_params = grid.best_params_
+    best_pipe = grid.best_estimator_
+    print(f"\nMejores hiperparámetros (F1 CV {grid.best_score_:.3f}):")
+    print(f"  {describe_params(best_params)}")
+
+    # Requisito de overfitting sobre el modelo optimizado
+    def metrics_pipe(p, Xs, ys):
+        proba = p.predict_proba(Xs)[:, 1]
+        pred = (proba >= THRESHOLD).astype(int)
+        return {
+            "recall": recall_score(ys, pred),
+            "precision": precision_score(ys, pred),
+            "f1": f1_score(ys, pred),
+        }
+
+    tr_g = metrics_pipe(best_pipe, X_train, y_train)
+    te_g = metrics_pipe(best_pipe, X_test, y_test)
+    print("\n--- GridSearch best: train vs test (requisito overfitting) ---")
+    print(f"{'Métrica':<10} | {'Train':>7} | {'Test':>7} | {'|Diff|':>8} | {'Cumple?':>8}")
+    print("-" * 60)
+    all_ok_g = True
+    for m in ["recall", "precision", "f1"]:
+        diff = abs(tr_g[m] - te_g[m])
+        ok = diff <= MAX_DIFF
+        all_ok_g = all_ok_g and ok
+        print(f"{m:<10} | {tr_g[m]:>7.3f} | {te_g[m]:>7.3f} | {diff:>8.3f} | {'SI' if ok else 'NO':>8}")
+    print(f"  -> {'CUMPLE' if all_ok_g else 'no cumple'} el criterio de 5 puntos")
+
+    # Decisión final: mejor de GridSearch si cumple y supera al mejor de CONFIGS
+    if all_ok_g and grid.best_score_ > best["f1_cv"]:
+        best = {"f1_cv": grid.best_score_, "pipe": best_pipe, "name": "GridSearch " + describe_params(best_params)}
+
     if best["pipe"] is not None:
         joblib.dump(best["pipe"], MODEL_DIR / "catboost_final.pkl")
         print(f"\nMODELO FINAL guardado en: {MODEL_DIR / 'catboost_final.pkl'}"
-              f"  ({best['name']}, F1 test {best['f1']:.3f})")
+              f"  ({best['name']}, F1 CV {best['f1_cv']:.3f})")
     else:
         print("\nNinguna configuración cumplió el criterio; no se sobreescribe catboost_final.pkl.")
 
