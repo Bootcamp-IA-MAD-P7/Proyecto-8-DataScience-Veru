@@ -80,7 +80,7 @@ El ictus (accidente cerebrovascular) es una de las principales causas de mortali
 │   ├── compare_train_test.py        #   Comprueba requisito de overfitting
 │   └── predict_cli.py               #   Aplicación de línea de comandos (CLI)
 ├── tests/                   # Suite de tests (pytest) + INFORME_TESTS.md
-├── SDD/                     # Documento de diseño (Decisiones D1–D10)
+├── SDD/                     # Documento de diseño (Decisiones D1–D11)
 ├── makefile                 # Orquestación de tareas
 ├── pyproject.toml           # Dependencias del proyecto (uv)
 ├── uv.lock                  # Lock de dependencias
@@ -140,6 +140,8 @@ Salida: `{"probabilidad_ictus":0.8855,"clase":1,"riesgo":"ALTO"}`
 - **Pipeline de preprocesado + modelo** (scikit-learn `Pipeline`): one-hot encoding de categóricas, estandarización de numéricas y `passthrough` de binarias, con el modelo al final. Previene **data leakage** (D6).
 - **Tratamiento del desbalance**: `scale_pos_weight` (CatBoost) y `class_weight` / SMOTE (comparativa). El desbalance (4.98 % de ictus) hace que la precisión sea estructuralmente baja (0.146) a cambio de un recall alto.
 - **Control de overfitting**: reducción de iteraciones, profundidad (`depth`), `min_data_in_leaf`, `l2_leaf_reg` y `bagging_temperature`. Verificado con `scripts/compare_train_test.py` y con el test automático `test_final_model_meets_overfitting_requirement`.
+- **Validación cruzada**: `StratifiedKFold(5)` sobre el train en el entrenamiento del modelo final (`train_catboost_regularized.py`), reportando media ± desv de recall/precisión/F1 por configuración (decisión D5.1).
+- **Optimización de hiperparámetros**: `GridSearchCV` (scikit-learn) con rejilla de 6 hiperparámetros, scoring **F1** y CV estratificada dentro de la misma pipeline (sin data leakage) (decisión D5.2).
 - **CLI** (`argparse`): `scripts/predict_cli.py`, validación de argumentos y veredicto legible.
 - **API REST** (FastAPI + Pydantic): modelo de entrada tipado (`PatientData`), validación de dominios (género, trabajo, fumador…), respuestas tipadas (`PredictionResponse`) y error 422 ante entradas inválidas.
 - **Naming**: ver [Convenciones de nombres](#convenciones-de-nombres).
@@ -157,14 +159,37 @@ Salida: `{"probabilidad_ictus":0.8855,"clase":1,"riesgo":"ALTO"}`
 
 ## Diseño de la base de datos
 
-**No se utiliza base de datos.** Los datos vienen de un único CSV estático (`data/stroke_dataset.csv`, 4981 filas × 11 columnas) que se carga con pandas en cada script y API. No hay tablas, relaciones ni normalización que documentar.
+Hay **dos orígenes de datos**:
 
-Columnas del dataset:
+1. **`data/stroke_dataset.csv`** (datos de entrenamiento, solo lectura): 4981 filas × 11 columnas, cargado con pandas en scripts y modelo.
+2. **Base de datos de predicciones** (historial de la API): tabla `predictions` donde se guarda cada resultado de `POST /predict`. Usa **PostgreSQL** (`DATABASE_URL`) en Docker/producción y **SQLite** (`data/predictions.db`) por defecto en local/tests (decisión D11). Se consulta con `GET /predictions`.
+
+### Modelo entidad-relación (E-R)
+
+Base de datos de **una sola entidad** (`predictions`): una predicción de ictus. No hay relaciones entre entidades ni claves foráneas (el modelo predice sobre un paciente puntual).
+
+```
+PREDICTION (tabla predictions)
+ ┌───────────────────────────────────────────────────────────┐
+ │ id (PK, autoincremental)                                  │
+ │ ── Entrada (features del paciente) ──                     │
+ │ age, gender, hypertension, heart_disease, ever_married,   │
+ │ work_type, Residence_type, avg_glucose_level, bmi,        │
+ │ smoking_status                                            │
+ │ ── Salida (resultado del modelo) ──                       │
+ │ probabilidad (0–1), clase (0/1), riesgo ("ALTO"/"BAJO"),  │
+ │ created_at (fecha/hora)                                   │
+ └───────────────────────────────────────────────────────────┘
+ Relaciones: ninguna · PK: id · FK: no hay
+```
+
+Columnas de la tabla `predictions`:
 
 | Columna | Tipo | Descripción |
 |---|---|---|
-| `gender` | str | Male / Female / Other |
+| `id` | serial/int **PK** | Identificador autogenerado |
 | `age` | float | Edad en años |
+| `gender` | str | Male / Female / Other |
 | `hypertension` | int | 0/1 |
 | `heart_disease` | int | 0/1 |
 | `ever_married` | str | Yes / No |
@@ -173,7 +198,10 @@ Columnas del dataset:
 | `avg_glucose_level` | float | Glucosa media (mg/dL) |
 | `bmi` | float | Índice de masa corporal |
 | `smoking_status` | str | never smoked / formerly smoked / smokes / Unknown |
-| `stroke` | int | **Target** (0/1), 248 positivos (4.98 %) |
+| `probabilidad` | float | Probabilidad de ictus devuelta por el modelo |
+| `clase` | int | 0/1 (riesgo) |
+| `riesgo` | str | `ALTO` / `BAJO` |
+| `created_at` | timestamp | Fecha y hora de la predicción |
 
 ## Paradigma de desarrollo, estructura de carpetas y patrones de diseño
 
@@ -202,7 +230,7 @@ Columnas del dataset:
 
 ```
 main  ─────────────────────────── (solo al final del proyecto)
-dev   ◄── models ◄── informe ◄── fastapi ◄── readme
+dev   ◄── models ◄── informe ◄── fastapi ◄── validacioncruzada ◄── readme
 ```
 
 | Rama | Contenido |
@@ -213,15 +241,17 @@ dev   ◄── models ◄── informe ◄── fastapi ◄── readme
 | `models` | Entrenamiento de modelos y tests base |
 | `informe` | Informe + feature importance |
 | `fastapi` | API de productivización y sus tests |
+| `validacioncruzada` | Validación cruzada y optimización (GridSearchCV) del modelo final |
 | `readme` | Documentación del proyecto |
 
 **Commits**: mensajes **descriptivos en español**, estilo *convencional* (`feat/`, `fix/`, `chore/`, `docs/`):
 
 ```text
+feat/optimizacion: GridSearchCV + validación cruzada (D5.1–D5.2)
+chore/completar tarea: validación cruzada del modelo final
+fix/readme con lo que sí está hecho
 feat/tests: tests funcionales de la API FastAPI y limpieza de __pycache__
-feat/añadir feature importance al informe
 entrenamiento de modelos y tests pasados
-chore/creados documentos del 01 al 07 en notebooks
 ```
 
 ## Documentación general y de la API
@@ -231,7 +261,7 @@ chore/creados documentos del 01 al 07 en notebooks
 | Documento | Ubicación |
 |---|---|
 | Este README | `README.md` |
-| Decisiones de diseño (D1–D10) | `SDD/02.Scope_anchored.md` |
+| Decisiones de diseño (D1–D11) | `SDD/02.Scope_anchored.md` |
 | Informe de rendimiento del modelo | `models/INFORME_MODELOS.md` |
 | Informe de tests | `tests/INFORME_TESTS.md` |
 | Informe EDA / conclusiones | `notebooks/07.Informe.md` |
@@ -283,6 +313,8 @@ chore/creados documentos del 01 al 07 en notebooks
 | F1 | 0.250 |
 | \|train − test\| (todas) | ≤ 1.4 puntos ✅ |
 
+La selección se hace con **validación cruzada (`StratifiedKFold`, 5 folds)** y **GridSearchCV (scoring F1)**: ambas cubren el requisito de CV y de optimización con herramienta de tuning. La mejor combinación del grid (F1 CV 0.235) sobreajusta (diff recall 10.9 pts > 5), así que prevalece el requisito del trabajo y gana **"med"** (mejor F1 medio de CV = 0.225 entre las que cumplen).
+
 **Análisis de características** (feature importance): `age` concentra el **64.2 %** de la importancia; le siguen `bmi` (11.0 %) y `avg_glucose_level` (9.4 %).
 
 ### Requisitos de la asignatura
@@ -291,7 +323,12 @@ chore/creados documentos del 01 al 07 en notebooks
 |---|---|
 | Modelo ML funcional que prediga riesgo de ictus | ✅ `catboost_final.pkl` |
 | EDA con gráficos y estadísticas | ✅ notebooks 01–07 |
+| Modelo de ML con técnicas de **ensemble** | ✅ CatBoost (y comparativa con RF/XGBoost) |
+| Uso de **validación cruzada** | ✅ `StratifiedKFold(5)` en el entrenamiento del modelo final (D5.1) |
+| **Mitigar el desbalance** (4.98 % positivos) | ✅ `scale_pos_weight` + comparativa con `class_weight`/SMOTE |
+| **Optimización de hiperparámetros** con herramienta de tuning | ✅ GridSearchCV (D5.2) |
 | Overfitting \|train − test\| ≤ 5 puntos | ✅ CatBoost final ≤ 1.4 pts, verificado por test |
+| **Test unitarios** | ✅ 24 tests (`make test`) |
 | Aplicación de línea de comandos | ✅ `scripts/predict_cli.py` |
 | Solución que productivice el modelo | ✅ API FastAPI (`BACKEND/main.py`) |
 | Informe con precisión/recall/F1/AUC-ROC + características | ✅ `models/INFORME_MODELOS.md` (secc. 4.1) |
@@ -306,8 +343,8 @@ chore/creados documentos del 01 al 07 en notebooks
 # 1. Instalar dependencias (uv)
 uv sync
 
-# 2. (Opcional) Reentrenar todos los modelos
-make all          # o solo el final: make train-cat
+# 2. (Opcional) Reentrenar el modelo final (validación cruzada + GridSearchCV)
+make train-cat     # o todos: make all
 
 # 3. Verificar el requisito de overfitting
 make compare
